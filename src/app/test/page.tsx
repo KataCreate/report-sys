@@ -11,7 +11,7 @@ export default function TestPage() {
     async function testConnection() {
       try {
         // Supabase接続をテスト（存在しないテーブルでクエリを実行）
-        const { data, error } = await supabase.from("_dummy_table_").select("*").limit(1);
+        const { error } = await supabase.from("_dummy_table_").select("*").limit(1);
 
         if (error) {
           // PGRST116: テーブルが存在しないエラーは正常（接続は成功）
