@@ -30,10 +30,13 @@ export default function ChannelsPage() {
 
   const loadChannels = async () => {
     try {
+      console.log("Loading channels for user:", user?.email);
       const channelsData = await databaseService.getChannels();
+      console.log("Channels loaded:", channelsData);
       setChannels(channelsData);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to load channels:", error);
+      setError(`チャンネルの読み込みに失敗しました: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -45,16 +48,19 @@ export default function ChannelsPage() {
     setError("");
 
     try {
+      console.log("Adding channel:", newChannelId);
       // YouTube APIからチャンネル情報を取得
       const channelInfo = await youtubeAPI.getChannelInfo(newChannelId);
+      console.log("Channel info:", channelInfo);
 
       // データベースに保存
-      await databaseService.createChannel({
+      const newChannel = await databaseService.createChannel({
         channel_id: channelInfo.channelId,
         channel_name: channelInfo.channelName,
         channel_url: channelInfo.channelUrl,
         is_active: true,
       });
+      console.log("Channel created:", newChannel);
 
       // フォームをリセット
       setNewChannelId("");
@@ -63,6 +69,7 @@ export default function ChannelsPage() {
       // チャンネル一覧を再読み込み
       await loadChannels();
     } catch (error: any) {
+      console.error("Failed to add channel:", error);
       setError(error.message || "チャンネルの追加に失敗しました");
     } finally {
       setSubmitting(false);
@@ -73,8 +80,9 @@ export default function ChannelsPage() {
     try {
       await databaseService.updateChannel(channelId, { is_active: !isActive });
       await loadChannels();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update channel:", error);
+      setError(`チャンネルの更新に失敗しました: ${error.message}`);
     }
   };
 
@@ -86,8 +94,9 @@ export default function ChannelsPage() {
     try {
       await databaseService.deleteChannel(channelId);
       await loadChannels();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to delete channel:", error);
+      setError(`チャンネルの削除に失敗しました: ${error.message}`);
     }
   };
 
@@ -136,6 +145,29 @@ export default function ChannelsPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">エラーが発生しました</h3>
+                <div className="mt-2 text-sm text-red-700">
+                  <p>{error}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Add Channel Form */}
         {showAddForm && (
           <div className="bg-white p-6 rounded-lg shadow mb-6">
@@ -158,12 +190,6 @@ export default function ChannelsPage() {
                   チャンネルIDはYouTubeチャンネルURLから取得できます
                 </p>
               </div>
-
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-md p-4">
-                  <p className="text-sm text-red-600">{error}</p>
-                </div>
-              )}
 
               <div className="flex space-x-4">
                 <button

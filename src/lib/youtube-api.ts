@@ -1,9 +1,9 @@
 import { YouTubeChannelStats, YouTubeVideoStats, YouTubeAnalyticsData } from "@/types/youtube";
 
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
 
 if (!YOUTUBE_API_KEY) {
-  throw new Error("YOUTUBE_API_KEY is not defined");
+  throw new Error("NEXT_PUBLIC_YOUTUBE_API_KEY is not defined");
 }
 
 export class YouTubeAPI {
