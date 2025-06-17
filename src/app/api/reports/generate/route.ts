@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
 import { youtubeAPI } from "@/lib/youtube-api";
 import { openaiAPI } from "@/lib/openai-api";
 import { databaseService } from "@/lib/database";
 
 export async function POST(request: NextRequest) {
   try {
+    // 認証チェック
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
     const { channelId, year, month } = await request.json();
 
     if (!channelId || !year || !month) {
@@ -13,6 +24,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    console.log(`Generating report for user: ${user.email}, channel: ${channelId}, year: ${year}, month: ${month}`);
 
     // YouTube APIからデータを取得
     const reportData = await youtubeAPI.generateMonthlyReport(channelId, year, month);
