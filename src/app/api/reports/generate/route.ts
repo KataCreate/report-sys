@@ -47,22 +47,60 @@ export async function POST(request: NextRequest) {
     // YouTube APIからデータを取得
     const reportData = await youtubeAPI.generateMonthlyReport(channelId, year, month);
 
-    // データベースに保存
-    const savedReport = await databaseService.createMonthlyReport(reportData);
+    // ユーザーIDを追加
+    const reportWithUser = {
+      ...reportData,
+      user_id: user.id,
+    };
+
+    // データベースに保存（RLSが無効化されているので直接保存可能）
+    const { data: savedReport, error: saveError } = await supabase
+      .from('monthly_reports')
+      .insert([reportWithUser])
+      .select()
+      .single();
+
+    if (saveError) {
+      console.error("Failed to save report:", saveError);
+      return NextResponse.json(
+        { error: `Failed to save report: ${saveError.message}` },
+        { status: 500 }
+      );
+    }
 
     // OpenAI APIで要約を生成
     try {
       const summary = await openaiAPI.generateReportSummary(savedReport);
 
       // 要約をデータベースに更新
-      await databaseService.updateMonthlyReport(savedReport.id, {
-        summary: summary.summary,
-        insights: summary.insights,
-        recommendations: summary.recommendations,
-      });
+      const { error: updateError } = await supabase
+        .from('monthly_reports')
+        .update({
+          summary: summary.summary,
+          insights: summary.insights,
+          recommendations: summary.recommendations,
+        })
+        .eq('id', savedReport.id);
+
+      if (updateError) {
+        console.error("Failed to update report with summary:", updateError);
+      }
 
       // 更新されたレポートを取得
-      const updatedReport = await databaseService.getMonthlyReport(savedReport.id);
+      const { data: updatedReport, error: fetchError } = await supabase
+        .from('monthly_reports')
+        .select('*')
+        .eq('id', savedReport.id)
+        .single();
+
+      if (fetchError) {
+        console.error("Failed to fetch updated report:", fetchError);
+        return NextResponse.json({
+          success: true,
+          report: savedReport,
+          summary: summary,
+        });
+      }
 
       return NextResponse.json({
         success: true,
