@@ -11,6 +11,7 @@ import ViewDurationChart from "@/components/charts/ViewDurationChart";
 import PDFReport from "@/components/PDFReport";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
+import { supabase } from "@/lib/supabase";
 
 export default function DashboardPage() {
   const [reports, setReports] = useState<MonthlyReport[]>([]);
@@ -63,10 +64,21 @@ export default function DashboardPage() {
 
     setGenerating(true);
     try {
+      // 現在のセッショントークンを取得
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        alert("認証が必要です。再度ログインしてください。");
+        return;
+      }
+
       const response = await fetch("/api/reports/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           channelId: selectedChannel,

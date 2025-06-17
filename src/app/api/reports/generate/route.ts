@@ -1,17 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
 import { youtubeAPI } from "@/lib/youtube-api";
 import { openaiAPI } from "@/lib/openai-api";
 import { databaseService } from "@/lib/database";
 
+// サーバーサイド用のSupabaseクライアント
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
 export async function POST(request: NextRequest) {
   try {
-    // 認証チェック
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Authorizationヘッダーからトークンを取得
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json(
+        { error: "Authorization header required" },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.substring(7); // "Bearer " を除去
+
+    // トークンでユーザーを認証
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
+      console.error("Authentication error:", authError);
       return NextResponse.json(
-        { error: "Authentication required" },
+        { error: "Invalid or expired token" },
         { status: 401 }
       );
     }
