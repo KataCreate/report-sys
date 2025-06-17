@@ -4,12 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { databaseService } from "@/lib/database";
-import { MonthlyReport } from "@/types/youtube";
+import { MonthlyReport, Channel } from "@/types/youtube";
+import PDFReport from "@/components/PDFReport";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 
 export default function ReportsPage() {
   const [reports, setReports] = useState<MonthlyReport[]>([]);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [selectedChannel, setSelectedChannel] = useState<string>("");
+  const [selectedReport, setSelectedReport] = useState<MonthlyReport | null>(null);
   const [loading, setLoading] = useState(true);
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -21,18 +25,35 @@ export default function ReportsPage() {
     }
 
     if (user) {
-      loadReports();
+      loadData();
     }
   }, [user, authLoading, router]);
 
-  const loadReports = async () => {
+  const loadData = async () => {
     try {
-      const reportsData = await databaseService.getMonthlyReports(50);
+      const [reportsData, channelsData] = await Promise.all([
+        databaseService.getMonthlyReports(),
+        databaseService.getActiveChannels(),
+      ]);
       setReports(reportsData);
+      setChannels(channelsData);
     } catch (error) {
-      console.error("Failed to load reports:", error);
+      console.error("Failed to load data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteReport = async (reportId: string) => {
+    if (!confirm("このレポートを削除しますか？")) {
+      return;
+    }
+
+    try {
+      await databaseService.deleteMonthlyReport(reportId);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to delete report:", error);
     }
   };
 
@@ -40,10 +61,9 @@ export default function ReportsPage() {
     return num.toLocaleString();
   };
 
-  const formatDuration = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
+  const getChannelName = (channelId: string) => {
+    const channel = channels.find((c) => c.channel_id === channelId);
+    return channel?.channel_name || channelId;
   };
 
   if (authLoading || loading) {
@@ -61,6 +81,10 @@ export default function ReportsPage() {
     return null;
   }
 
+  const filteredReports = selectedChannel
+    ? reports.filter((report) => report.channel_id === selectedChannel)
+    : reports;
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
@@ -68,8 +92,8 @@ export default function ReportsPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">月次レポート一覧</h1>
-              <p className="text-gray-600">過去の月次レポートを確認できます</p>
+              <h1 className="text-3xl font-bold text-gray-900">レポート一覧</h1>
+              <p className="text-gray-600">生成された月次レポートの管理</p>
             </div>
             <div className="flex items-center space-x-4">
               <button
@@ -78,6 +102,12 @@ export default function ReportsPage() {
               >
                 ダッシュボード
               </button>
+              <button
+                onClick={() => router.push("/channels")}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
+              >
+                チャンネル管理
+              </button>
             </div>
           </div>
         </div>
@@ -85,10 +115,28 @@ export default function ReportsPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {reports.length > 0 ? (
+        {/* Channel Filter */}
+        <div className="bg-white p-6 rounded-lg shadow mb-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">チャンネルフィルター</h2>
+          <select
+            value={selectedChannel}
+            onChange={(e) => setSelectedChannel(e.target.value)}
+            className="block w-full max-w-xs border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          >
+            <option value="">すべてのチャンネル</option>
+            {channels.map((channel) => (
+              <option key={channel.id} value={channel.channel_id}>
+                {channel.channel_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Reports List */}
+        {filteredReports.length > 0 ? (
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
             <ul className="divide-y divide-gray-200">
-              {reports.map((report) => (
+              {filteredReports.map((report) => (
                 <li key={report.id}>
                   <div className="px-4 py-4 sm:px-6">
                     <div className="flex items-center justify-between">
@@ -112,15 +160,17 @@ export default function ReportsPage() {
                         </div>
                         <div className="ml-4">
                           <div className="flex items-center">
-                            <p className="text-sm font-medium text-indigo-600 truncate">
-                              {format(new Date(report.report_date), "yyyy年M月", { locale: ja })}{" "}
-                              レポート
+                            <p className="text-sm font-medium text-gray-900">
+                              {getChannelName(report.channel_id)} -{" "}
+                              {format(new Date(report.report_date), "yyyy年M月", { locale: ja })}
                             </p>
-                            <div className="ml-2 flex-shrink-0 flex">
-                              <p className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                                完了
-                              </p>
-                            </div>
+                            {report.summary && (
+                              <div className="ml-2 flex-shrink-0 flex">
+                                <p className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                  AI要約あり
+                                </p>
+                              </div>
+                            )}
                           </div>
                           <div className="mt-2 sm:flex sm:justify-between">
                             <div className="sm:flex">
@@ -178,8 +228,8 @@ export default function ReportsPage() {
                                 />
                               </svg>
                               <p>
-                                作成日:{" "}
-                                {format(new Date(report.created_at), "yyyy/MM/dd HH:mm", {
+                                生成日:{" "}
+                                {format(new Date(report.created_at), "yyyy年M月d日 HH:mm", {
                                   locale: ja,
                                 })}
                               </p>
@@ -187,24 +237,18 @@ export default function ReportsPage() {
                           </div>
                         </div>
                       </div>
-                      <div className="ml-6 flex items-center space-x-4">
-                        <div className="text-right">
-                          <p className="text-sm text-gray-500">平均視聴時間</p>
-                          <p className="text-sm font-medium text-gray-900">
-                            {formatDuration(report.average_view_duration)}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-500">視聴率</p>
-                          <p className="text-sm font-medium text-gray-900">
-                            {report.average_view_percentage.toFixed(1)}%
-                          </p>
-                        </div>
+                      <div className="ml-6 flex items-center space-x-2">
                         <button
-                          onClick={() => router.push(`/reports/${report.id}`)}
-                          className="bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700"
+                          onClick={() => setSelectedReport(report)}
+                          className="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
                         >
-                          詳細
+                          PDF出力
+                        </button>
+                        <button
+                          onClick={() => handleDeleteReport(report.id)}
+                          className="bg-gray-100 text-gray-800 px-3 py-1 rounded text-sm hover:bg-gray-200"
+                        >
+                          削除
                         </button>
                       </div>
                     </div>
@@ -216,7 +260,47 @@ export default function ReportsPage() {
         ) : (
           <div className="bg-white p-8 rounded-lg shadow text-center">
             <h3 className="text-lg font-medium text-gray-900 mb-2">レポートがありません</h3>
-            <p className="text-gray-600">月次レポートデータがまだ作成されていません。</p>
+            <p className="text-gray-600 mb-4">
+              {selectedChannel
+                ? "選択されたチャンネルのレポートがまだ生成されていません。"
+                : "レポートがまだ生成されていません。"}
+            </p>
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+            >
+              レポートを生成
+            </button>
+          </div>
+        )}
+
+        {/* PDF Report Modal */}
+        {selectedReport && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-4xl max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  PDFレポート - {getChannelName(selectedReport.channel_id)}
+                </h2>
+                <button
+                  onClick={() => setSelectedReport(null)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <PDFReport
+                report={selectedReport}
+                channelName={getChannelName(selectedReport.channel_id)}
+              />
+            </div>
           </div>
         )}
       </main>

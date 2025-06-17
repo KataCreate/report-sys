@@ -1,7 +1,70 @@
 import { supabase } from "./supabase";
-import { MonthlyReport, VideoAnalytics, AdminUser } from "@/types/youtube";
+import { MonthlyReport, VideoAnalytics, AdminUser, Channel } from "@/types/youtube";
 
 export class DatabaseService {
+  // チャンネル関連
+  async getChannels(): Promise<Channel[]> {
+    const { data, error } = await supabase
+      .from("channels")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw new Error(`Failed to fetch channels: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  async getActiveChannels(): Promise<Channel[]> {
+    const { data, error } = await supabase
+      .from("channels")
+      .select("*")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw new Error(`Failed to fetch active channels: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  async createChannel(
+    channel: Omit<Channel, "id" | "created_at" | "updated_at">
+  ): Promise<Channel> {
+    const { data, error } = await supabase.from("channels").insert([channel]).select().single();
+
+    if (error) {
+      throw new Error(`Failed to create channel: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  async updateChannel(id: string, updates: Partial<Channel>): Promise<Channel> {
+    const { data, error } = await supabase
+      .from("channels")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to update channel: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  async deleteChannel(id: string): Promise<void> {
+    const { error } = await supabase.from("channels").delete().eq("id", id);
+
+    if (error) {
+      throw new Error(`Failed to delete channel: ${error.message}`);
+    }
+  }
+
   // 月次レポート関連
   async getMonthlyReports(limit: number = 12): Promise<MonthlyReport[]> {
     const { data, error } = await supabase

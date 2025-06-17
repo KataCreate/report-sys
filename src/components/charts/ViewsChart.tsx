@@ -9,41 +9,31 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import { MonthlyReport } from "@/types/youtube";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 interface ViewsChartProps {
-  data: MonthlyReport[];
+  reports: MonthlyReport[];
 }
 
-export default function ViewsChart({ data }: ViewsChartProps) {
-  const sortedData = [...data].sort(
+export default function ViewsChart({ reports }: ViewsChartProps) {
+  const sortedReports = [...reports].sort(
     (a, b) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime()
   );
 
-  const chartData = {
-    labels: sortedData.map((report) =>
+  const data = {
+    labels: sortedReports.map((report) =>
       format(new Date(report.report_date), "yyyy年M月", { locale: ja })
     ),
     datasets: [
       {
         label: "総再生回数",
-        data: sortedData.map((report) => report.total_views),
+        data: sortedReports.map((report) => report.total_views),
         borderColor: "rgb(59, 130, 246)",
         backgroundColor: "rgba(59, 130, 246, 0.1)",
         fill: true,
@@ -59,19 +49,7 @@ export default function ViewsChart({ data }: ViewsChartProps) {
         position: "top" as const,
       },
       title: {
-        display: true,
-        text: "月次再生回数の推移",
-        font: {
-          size: 16,
-          weight: "bold" as const,
-        },
-      },
-      tooltip: {
-        callbacks: {
-          label: function (context: any) {
-            return `再生回数: ${context.parsed.y.toLocaleString()}回`;
-          },
-        },
+        display: false,
       },
     },
     scales: {
@@ -79,7 +57,7 @@ export default function ViewsChart({ data }: ViewsChartProps) {
         beginAtZero: true,
         ticks: {
           callback: function (value: any) {
-            return value.toLocaleString() + "回";
+            return value.toLocaleString();
           },
         },
       },
@@ -88,7 +66,7 @@ export default function ViewsChart({ data }: ViewsChartProps) {
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
-      <Line data={chartData} options={options} />
+      <Line data={data} options={options} />
     </div>
   );
 }

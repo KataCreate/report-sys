@@ -1,29 +1,48 @@
 import { YouTubeChannelStats, YouTubeVideoStats, YouTubeAnalyticsData } from "@/types/youtube";
 
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
-const YOUTUBE_CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID;
 
 if (!YOUTUBE_API_KEY) {
   throw new Error("YOUTUBE_API_KEY is not defined");
 }
 
-if (!YOUTUBE_CHANNEL_ID) {
-  throw new Error("YOUTUBE_CHANNEL_ID is not defined");
-}
-
 export class YouTubeAPI {
   private apiKey: string;
-  private channelId: string;
 
   constructor() {
     this.apiKey = YOUTUBE_API_KEY!;
-    this.channelId = YOUTUBE_CHANNEL_ID!;
+  }
+
+  // チャンネル情報を取得
+  async getChannelInfo(
+    channelId: string
+  ): Promise<{ channelId: string; channelName: string; channelUrl: string }> {
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${channelId}&key=${this.apiKey}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch channel info: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const channel = data.items[0];
+
+    if (!channel) {
+      throw new Error("Channel not found");
+    }
+
+    return {
+      channelId: channel.id,
+      channelName: channel.snippet.title,
+      channelUrl: `https://www.youtube.com/channel/${channel.id}`,
+    };
   }
 
   // チャンネル統計情報を取得
-  async getChannelStats(): Promise<YouTubeChannelStats> {
+  async getChannelStats(channelId: string): Promise<YouTubeChannelStats> {
     const response = await fetch(
-      `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${this.channelId}&key=${this.apiKey}`
+      `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${channelId}&key=${this.apiKey}`
     );
 
     if (!response.ok) {
@@ -45,9 +64,9 @@ export class YouTubeAPI {
   }
 
   // チャンネルの動画一覧を取得
-  async getChannelVideos(maxResults: number = 50): Promise<YouTubeVideoStats[]> {
+  async getChannelVideos(channelId: string, maxResults: number = 50): Promise<YouTubeVideoStats[]> {
     const response = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${this.channelId}&maxResults=${maxResults}&order=date&type=video&key=${this.apiKey}`
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channelId}&maxResults=${maxResults}&order=date&type=video&key=${this.apiKey}`
     );
 
     if (!response.ok) {
@@ -79,12 +98,16 @@ export class YouTubeAPI {
   }
 
   // 特定の期間のアナリティクスデータを取得（YouTube Analytics API）
-  async getAnalyticsData(startDate: string, endDate: string): Promise<YouTubeAnalyticsData> {
+  async getAnalyticsData(
+    channelId: string,
+    startDate: string,
+    endDate: string
+  ): Promise<YouTubeAnalyticsData> {
     // Note: YouTube Analytics API requires OAuth 2.0 authentication
     // This is a simplified version using the Data API
     // For full analytics, you would need to implement OAuth 2.0 flow
 
-    const videos = await this.getChannelVideos(100);
+    const videos = await this.getChannelVideos(channelId, 100);
 
     // 期間内の動画をフィルタリング
     const filteredVideos = videos.filter((video) => {
@@ -111,18 +134,18 @@ export class YouTubeAPI {
   }
 
   // 月次レポートデータを生成
-  async generateMonthlyReport(year: number, month: number): Promise<any> {
+  async generateMonthlyReport(channelId: string, year: number, month: number): Promise<any> {
     const startDate = new Date(year, month - 1, 1).toISOString().split("T")[0];
     const endDate = new Date(year, month, 0).toISOString().split("T")[0];
 
     const [channelStats, analyticsData] = await Promise.all([
-      this.getChannelStats(),
-      this.getAnalyticsData(startDate, endDate),
+      this.getChannelStats(channelId),
+      this.getAnalyticsData(channelId, startDate, endDate),
     ]);
 
     return {
       report_date: startDate,
-      channel_id: this.channelId,
+      channel_id: channelId,
       total_views: channelStats.totalViewCount,
       total_subscribers: channelStats.totalSubscriberCount,
       subscriber_growth: 0, // 前月比は別途計算が必要

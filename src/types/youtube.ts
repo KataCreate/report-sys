@@ -1,3 +1,13 @@
+export interface Channel {
+  id: string;
+  channel_id: string;
+  channel_name: string;
+  channel_url?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface MonthlyReport {
   id: string;
   report_date: string;
@@ -11,6 +21,9 @@ export interface MonthlyReport {
   average_view_percentage: number;
   total_watch_time: number;
   video_count: number;
+  summary?: string;
+  insights?: string;
+  recommendations?: string;
   created_at: string;
   updated_at: string;
 }
@@ -71,4 +84,10 @@ export interface ChartData {
     backgroundColor?: string;
     fill?: boolean;
   }[];
+}
+
+export interface ReportSummary {
+  summary: string;
+  insights: string;
+  recommendations: string;
 }

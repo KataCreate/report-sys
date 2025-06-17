@@ -4,17 +4,23 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { databaseService } from "@/lib/database";
-import { MonthlyReport } from "@/types/youtube";
+import { MonthlyReport, Channel } from "@/types/youtube";
 import ViewsChart from "@/components/charts/ViewsChart";
 import SubscribersChart from "@/components/charts/SubscribersChart";
 import ViewDurationChart from "@/components/charts/ViewDurationChart";
+import PDFReport from "@/components/PDFReport";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 
 export default function DashboardPage() {
   const [reports, setReports] = useState<MonthlyReport[]>([]);
-  const [stats, setStats] = useState<any>(null);
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [selectedChannel, setSelectedChannel] = useState<string>("");
+  const [selectedReport, setSelectedReport] = useState<MonthlyReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const { user, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
 
@@ -25,23 +31,73 @@ export default function DashboardPage() {
     }
 
     if (user) {
-      loadDashboardData();
+      loadData();
     }
   }, [user, authLoading, router]);
 
-  const loadDashboardData = async () => {
+  const loadData = async () => {
     try {
-      const [reportsData, statsData] = await Promise.all([
-        databaseService.getMonthlyReports(12),
-        databaseService.getMonthlyReportStats(),
+      const [reportsData, channelsData] = await Promise.all([
+        databaseService.getMonthlyReports(),
+        databaseService.getActiveChannels(),
       ]);
       setReports(reportsData);
-      setStats(statsData);
+      setChannels(channelsData);
+
+      // 最初のチャンネルを選択
+      if (channelsData.length > 0 && !selectedChannel) {
+        setSelectedChannel(channelsData[0].channel_id);
+      }
     } catch (error) {
-      console.error("Failed to load dashboard data:", error);
+      console.error("Failed to load data:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const generateReport = async () => {
+    if (!selectedChannel) {
+      alert("チャンネルを選択してください");
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const response = await fetch("/api/reports/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          channelId: selectedChannel,
+          year: selectedYear,
+          month: selectedMonth,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert("レポートが生成されました");
+        await loadData();
+      } else {
+        alert("レポートの生成に失敗しました: " + data.error);
+      }
+    } catch (error) {
+      console.error("Failed to generate report:", error);
+      alert("レポートの生成に失敗しました");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const formatNumber = (num: number) => {
+    return num.toLocaleString();
+  };
+
+  const getChannelName = (channelId: string) => {
+    const channel = channels.find((c) => c.channel_id === channelId);
+    return channel?.channel_name || channelId;
   };
 
   const handleSignOut = async () => {
@@ -68,6 +124,12 @@ export default function DashboardPage() {
     return null;
   }
 
+  const filteredReports = selectedChannel
+    ? reports.filter((report) => report.channel_id === selectedChannel)
+    : reports;
+
+  const latestReport = filteredReports[0];
+
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
@@ -76,12 +138,18 @@ export default function DashboardPage() {
           <div className="flex justify-between items-center py-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">YouTube Analytics Dashboard</h1>
-              <p className="text-gray-600">管理者: {user.email}</p>
+              <p className="text-gray-600">チャンネルパフォーマンスの分析とレポート生成</p>
             </div>
             <div className="flex items-center space-x-4">
               <button
+                onClick={() => router.push("/channels")}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
+              >
+                チャンネル管理
+              </button>
+              <button
                 onClick={() => router.push("/reports")}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
               >
                 レポート一覧
               </button>
@@ -98,158 +166,183 @@ export default function DashboardPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Stats Cards */}
-        {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                      <svg
-                        className="w-5 h-5 text-white"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">総レポート数</dt>
-                      <dd className="text-lg font-medium text-gray-900">{stats.totalReports}</dd>
-                    </dl>
-                  </div>
-                </div>
+        {/* Channel Selection and Report Generation */}
+        <div className="bg-white p-6 rounded-lg shadow mb-6">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">レポート生成</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">チャンネル</label>
+              <select
+                value={selectedChannel}
+                onChange={(e) => setSelectedChannel(e.target.value)}
+                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                <option value="">チャンネルを選択</option>
+                {channels.map((channel) => (
+                  <option key={channel.id} value={channel.channel_id}>
+                    {channel.channel_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">年</label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                  <option key={year} value={year}>
+                    {year}年
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">月</label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                  <option key={month} value={month}>
+                    {month}月
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={generateReport}
+                disabled={generating || !selectedChannel}
+                className="w-full bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {generating ? "生成中..." : "レポート生成"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Latest Report Summary */}
+        {latestReport && (
+          <div className="bg-white p-6 rounded-lg shadow mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">
+                最新レポート - {getChannelName(latestReport.channel_id)}
+              </h2>
+              <button
+                onClick={() => setSelectedReport(latestReport)}
+                className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700"
+              >
+                PDF出力
+              </button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-blue-50 p-4 rounded-lg text-center">
+                <h3 className="text-lg font-semibold text-blue-900">総再生回数</h3>
+                <p className="text-2xl font-bold text-blue-600">
+                  {formatNumber(latestReport.total_views)}
+                </p>
+              </div>
+              <div className="bg-green-50 p-4 rounded-lg text-center">
+                <h3 className="text-lg font-semibold text-green-900">総登録者数</h3>
+                <p className="text-2xl font-bold text-green-600">
+                  {formatNumber(latestReport.total_subscribers)}
+                </p>
+              </div>
+              <div className="bg-purple-50 p-4 rounded-lg text-center">
+                <h3 className="text-lg font-semibold text-purple-900">平均視聴時間</h3>
+                <p className="text-2xl font-bold text-purple-600">
+                  {Math.floor(latestReport.average_view_duration / 60)}分
+                </p>
+              </div>
+              <div className="bg-yellow-50 p-4 rounded-lg text-center">
+                <h3 className="text-lg font-semibold text-yellow-900">平均視聴率</h3>
+                <p className="text-2xl font-bold text-yellow-600">
+                  {latestReport.average_view_percentage.toFixed(1)}%
+                </p>
               </div>
             </div>
 
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                      <svg
-                        className="w-5 h-5 text-white"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                        />
-                      </svg>
+            {/* AI要約 */}
+            {latestReport.summary && (
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">AI要約・分析</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {latestReport.summary && (
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-blue-900 mb-2">要約</h4>
+                      <p className="text-blue-800 text-sm">{latestReport.summary}</p>
                     </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">平均再生回数</dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {stats.averageViews.toLocaleString()}
-                      </dd>
-                    </dl>
-                  </div>
+                  )}
+                  {latestReport.insights && (
+                    <div className="bg-green-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-green-900 mb-2">洞察</h4>
+                      <p className="text-green-800 text-sm">{latestReport.insights}</p>
+                    </div>
+                  )}
+                  {latestReport.recommendations && (
+                    <div className="bg-purple-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-purple-900 mb-2">推奨事項</h4>
+                      <p className="text-purple-800 text-sm">{latestReport.recommendations}</p>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-                      <svg
-                        className="w-5 h-5 text-white"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">平均登録者数</dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {stats.averageSubscribers.toLocaleString()}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white overflow-hidden shadow rounded-lg">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                      <svg
-                        className="w-5 h-5 text-white"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">最新レポート</dt>
-                      <dd className="text-lg font-medium text-gray-900">
-                        {stats.latestReport
-                          ? format(new Date(stats.latestReport.report_date), "yyyy年M月", {
-                              locale: ja,
-                            })
-                          : "なし"}
-                      </dd>
-                    </dl>
-                  </div>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
         {/* Charts */}
-        {reports.length > 0 ? (
-          <div className="space-y-8">
-            <ViewsChart data={reports} />
-            <SubscribersChart data={reports} />
-            <ViewDurationChart data={reports} />
+        {filteredReports.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">再生回数推移</h3>
+              <ViewsChart reports={filteredReports} />
+            </div>
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">登録者数推移</h3>
+              <SubscribersChart reports={filteredReports} />
+            </div>
           </div>
-        ) : (
-          <div className="bg-white p-8 rounded-lg shadow text-center">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">データがありません</h3>
-            <p className="text-gray-600">月次レポートデータがまだ作成されていません。</p>
+        )}
+
+        {filteredReports.length > 0 && (
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">平均視聴時間推移</h3>
+            <ViewDurationChart reports={filteredReports} />
+          </div>
+        )}
+
+        {/* PDF Report Modal */}
+        {selectedReport && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-4xl max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  PDFレポート - {getChannelName(selectedReport.channel_id)}
+                </h2>
+                <button
+                  onClick={() => setSelectedReport(null)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <PDFReport
+                report={selectedReport}
+                channelName={getChannelName(selectedReport.channel_id)}
+              />
+            </div>
           </div>
         )}
       </main>

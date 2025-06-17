@@ -1,6 +1,3 @@
--- Enable Row Level Security
-ALTER DATABASE postgres SET "app.jwt_secret" TO 'your-jwt-secret';
-
 -- Create tables for YouTube analytics data
 CREATE TABLE IF NOT EXISTS channels (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
