@@ -2,8 +2,15 @@ import { YouTubeChannelStats, YouTubeVideoStats, YouTubeAnalyticsData } from "@/
 
 const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
 
+// 環境変数のチェックをより詳細に
 if (!YOUTUBE_API_KEY) {
-  throw new Error("NEXT_PUBLIC_YOUTUBE_API_KEY is not defined");
+  console.error("NEXT_PUBLIC_YOUTUBE_API_KEY is not defined");
+  console.error("Available environment variables:", {
+    NEXT_PUBLIC_YOUTUBE_API_KEY: process.env.NEXT_PUBLIC_YOUTUBE_API_KEY,
+    NEXT_PUBLIC_YOUTUBE_CHANNEL_ID: process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_ID,
+    NODE_ENV: process.env.NODE_ENV,
+  });
+  throw new Error("NEXT_PUBLIC_YOUTUBE_API_KEY is not defined. Please check your environment variables.");
 }
 
 export class YouTubeAPI {
@@ -11,18 +18,23 @@ export class YouTubeAPI {
 
   constructor() {
     this.apiKey = YOUTUBE_API_KEY!;
+    console.log("YouTube API initialized with key:", this.apiKey.substring(0, 10) + "...");
   }
 
   // チャンネル情報を取得
   async getChannelInfo(
     channelId: string
   ): Promise<{ channelId: string; channelName: string; channelUrl: string }> {
+    console.log("Fetching channel info for:", channelId);
+
     const response = await fetch(
       `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${channelId}&key=${this.apiKey}`
     );
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch channel info: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error("YouTube API error:", response.status, errorText);
+      throw new Error(`Failed to fetch channel info: ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
