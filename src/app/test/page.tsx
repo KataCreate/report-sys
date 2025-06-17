@@ -10,14 +10,16 @@ export default function TestPage() {
   useEffect(() => {
     async function testConnection() {
       try {
-        // Supabase接続をテスト
+        // Supabase接続をテスト（存在しないテーブルでクエリを実行）
         const { data, error } = await supabase.from("_dummy_table_").select("*").limit(1);
 
-        if (error && error.code === "PGRST116") {
-          // テーブルが存在しないエラーは正常（接続は成功）
-          setStatus("✅ Supabase接続成功！");
-        } else if (error) {
-          setError(`接続エラー: ${error.message}`);
+        if (error) {
+          // PGRST116: テーブルが存在しないエラーは正常（接続は成功）
+          if (error.code === "PGRST116" || error.message.includes("does not exist")) {
+            setStatus("✅ Supabase接続成功！");
+          } else {
+            setError(`接続エラー: ${error.message}`);
+          }
         } else {
           setStatus("✅ Supabase接続成功！");
         }
@@ -60,6 +62,13 @@ export default function TestPage() {
             </p>
             <p className="text-xs text-blue-800">
               ANON KEY: {process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "✅ 設定済み" : "❌ 未設定"}
+            </p>
+          </div>
+
+          <div className="p-4 bg-green-50 rounded-lg">
+            <p className="text-sm text-green-600 mb-2">説明:</p>
+            <p className="text-xs text-green-800">
+              「テーブルが存在しない」エラーは正常な動作です。これはSupabaseへの接続が成功していることを意味します。
             </p>
           </div>
         </div>
